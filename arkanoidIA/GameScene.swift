@@ -8,12 +8,28 @@
 import SpriteKit
 import GameplayKit
 
-class GameScene: SKScene {
+class GameScene: SKScene, SKPhysicsContactDelegate {
+    
+    let ballCategory: UInt32 = 0x1 << 0
+    let paddleCategory: UInt32 = 0x1 << 1
+    let brickCategory: UInt32 = 0x1 << 2
+    let borderCategory: UInt32 = 0x1 << 3
+    let bottomCategory: UInt32 = 0x1 << 4
+    
+    var paddle: SKSpriteNode!
+    var ball: SKSpriteNode!
+    var gameOverLabel: SKLabelNode!
+    var restartButton: SKLabelNode!
+    
+    var isGameOver = false
+    var bricksBroken = 0
+    var baseBallSpeed: CGFloat = 400.0
     
     private var label : SKLabelNode?
     private var spinnyNode : SKShapeNode?
     
     override func didMove(to view: SKView) {
+        setupGame()
         
         // Get label node from scene and store it for use later
         self.label = self.childNode(withName: "//helloLabel") as? SKLabelNode
@@ -36,6 +52,152 @@ class GameScene: SKScene {
         }
     }
     
+    func setupGame() {
+        self.removeAllChildren()
+        
+        isGameOver = false
+        bricksBroken = 0
+        baseBallSpeed = 400.0
+        
+        self.physicsWorld.gravity = .zero
+        self.physicsWorld.contactDelegate = self
+        
+        let borderBody = SKPhysicsBody(edgeLoopFrom: self.frame)
+        borderBody.friction = 0
+        borderBody.categoryBitMask = borderCategory
+        self.physicsBody = borderBody
+        
+        let bottomRect = CGRect(x: self.frame.minX, y: self.frame.minY, width: self.frame.width, height: 1)
+        let bottomNode = SKNode()
+        bottomNode.position = CGPoint(x: 0, y: 0)
+        let bottomBody = SKPhysicsBody(edgeLoopFrom: bottomRect)
+        bottomBody.categoryBitMask = bottomCategory
+        bottomBody.contactTestBitMask = ballCategory
+        bottomNode.physicsBody = bottomBody
+        self.addChild(bottomNode)
+        
+        paddle = SKSpriteNode(color: .white, size: CGSize(width: 100, height: 20))
+        let lowerThirdY = self.frame.minY + self.frame.height * 0.15
+        paddle.position = CGPoint(x: 0, y: lowerThirdY)
+        paddle.physicsBody = SKPhysicsBody(rectangleOf: paddle.size)
+        paddle.physicsBody?.isDynamic = false
+        paddle.physicsBody?.friction = 0
+        paddle.physicsBody?.restitution = 1
+        paddle.physicsBody?.categoryBitMask = paddleCategory
+        self.addChild(paddle)
+        
+        ball = SKSpriteNode(color: .white, size: CGSize(width: 15, height: 15))
+        ball.position = CGPoint(x: 0, y: paddle.position.y + 30)
+        ball.physicsBody = SKPhysicsBody(circleOfRadius: 7.5)
+        ball.physicsBody?.isDynamic = true
+        ball.physicsBody?.friction = 0
+        ball.physicsBody?.restitution = 1
+        ball.physicsBody?.linearDamping = 0
+        ball.physicsBody?.angularDamping = 0
+        ball.physicsBody?.allowsRotation = false
+        ball.physicsBody?.categoryBitMask = ballCategory
+        ball.physicsBody?.contactTestBitMask = bottomCategory | brickCategory
+        ball.physicsBody?.collisionBitMask = borderCategory | paddleCategory | brickCategory
+        self.addChild(ball)
+        
+        ball.physicsBody?.velocity = CGVector(dx: 200, dy: baseBallSpeed)
+        
+        setupBricks()
+    }
+    
+    func setupBricks() {
+        let rows = 5
+        let cols = 7
+        let brickWidth = (self.frame.width - 40) / CGFloat(cols)
+        let brickHeight: CGFloat = 20.0
+        let colors: [SKColor] = [.red, .orange, .yellow, .green, .cyan]
+        
+        let startX = self.frame.minX + 20 + brickWidth / 2
+        let startY = self.frame.maxY - 100
+        
+        for row in 0..<rows {
+            let color = colors[row % colors.count]
+            for col in 0..<cols {
+                let brick = SKSpriteNode(color: color, size: CGSize(width: brickWidth - 6, height: brickHeight))
+                brick.position = CGPoint(x: startX + CGFloat(col) * brickWidth,
+                                         y: startY - CGFloat(row) * (brickHeight + 6))
+                brick.physicsBody = SKPhysicsBody(rectangleOf: brick.size)
+                brick.physicsBody?.isDynamic = false
+                brick.physicsBody?.categoryBitMask = brickCategory
+                self.addChild(brick)
+            }
+        }
+    }
+    
+    func didBegin(_ contact: SKPhysicsContact) {
+        if isGameOver { return }
+        
+        let bodyA = contact.bodyA
+        let bodyB = contact.bodyB
+        
+        if bodyA.categoryBitMask == bottomCategory || bodyB.categoryBitMask == bottomCategory {
+            gameOver()
+            return
+        }
+        
+        var brickBody: SKPhysicsBody?
+        if bodyA.categoryBitMask == brickCategory { brickBody = bodyA }
+        else if bodyB.categoryBitMask == brickCategory { brickBody = bodyB }
+        
+        if let brick = brickBody?.node as? SKSpriteNode {
+            breakBrick(brick)
+        }
+    }
+    
+    func breakBrick(_ brick: SKSpriteNode) {
+        let emitter = SKEmitterNode()
+        emitter.particleColor = brick.color
+        emitter.particleColorSequence = nil
+        emitter.particleColorBlendFactor = 1.0
+        emitter.particleSize = CGSize(width: 5, height: 5)
+        emitter.particleBirthRate = 500
+        emitter.numParticlesToEmit = 20
+        emitter.particleLifetime = 0.5
+        emitter.particleSpeed = 100
+        emitter.particleSpeedRange = 50
+        emitter.emissionAngleRange = .pi * 2
+        emitter.position = brick.position
+        
+        self.addChild(emitter)
+        
+        emitter.run(SKAction.sequence([
+            SKAction.wait(forDuration: 1.0),
+            SKAction.removeFromParent()
+        ]))
+        
+        brick.removeFromParent()
+        bricksBroken += 1
+        
+        if bricksBroken % 5 == 0 {
+            baseBallSpeed *= 1.1
+            if let v = ball.physicsBody?.velocity {
+                let currentSpeed = sqrt(v.dx*v.dx + v.dy*v.dy)
+                let speedRatio = baseBallSpeed / currentSpeed
+                ball.physicsBody?.velocity = CGVector(dx: v.dx * speedRatio, dy: v.dy * speedRatio)
+            }
+        }
+    }
+    
+    func gameOver() {
+        isGameOver = true
+        ball.removeFromParent()
+        
+        gameOverLabel = SKLabelNode(text: "Game Over")
+        gameOverLabel.fontSize = 40
+        gameOverLabel.position = CGPoint(x: 0, y: 20)
+        self.addChild(gameOverLabel)
+        
+        restartButton = SKLabelNode(text: "Reiniciar")
+        restartButton.fontSize = 20
+        restartButton.position = CGPoint(x: 0, y: -40)
+        restartButton.name = "restart"
+        self.addChild(restartButton)
+    }
     
     func touchDown(atPoint pos : CGPoint) {
         if let n = self.spinnyNode?.copy() as! SKShapeNode? {
@@ -62,27 +224,47 @@ class GameScene: SKScene {
     }
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if let label = self.label {
-            label.run(SKAction.init(named: "Pulse")!, withKey: "fadeInOut")
+        super.touchesBegan(touches, with: event)
+        if isGameOver {
+            if let touch = touches.first {
+                let location = touch.location(in: self)
+                let nodesAtLocation = self.nodes(at: location)
+                if nodesAtLocation.contains(where: { $0.name == "restart" }) {
+                    setupGame()
+                }
+            }
+            return
         }
         
-        for t in touches { self.touchDown(atPoint: t.location(in: self)) }
+        if let touch = touches.first {
+            paddle.position.x = touch.location(in: self).x
+        }
     }
     
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { self.touchMoved(toPoint: t.location(in: self)) }
+        if isGameOver { return }
+        if let touch = touches.first {
+            paddle.position.x = touch.location(in: self).x
+        }
     }
     
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { self.touchUp(atPoint: t.location(in: self)) }
-    }
-    
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { self.touchUp(atPoint: t.location(in: self)) }
-    }
-    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {}
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {}
     
     override func update(_ currentTime: TimeInterval) {
-        // Called before each frame is rendered
+        guard !isGameOver, let body = ball?.physicsBody else { return }
+        
+        let velocity = body.velocity
+        let minVelocity_Y: CGFloat = 80.0
+        
+        if abs(velocity.dy) < minVelocity_Y {
+            body.velocity.dy = velocity.dy < 0 ? -minVelocity_Y : minVelocity_Y
+        }
+        
+        let currentSpeed = sqrt(velocity.dx*velocity.dx + velocity.dy*velocity.dy)
+        if currentSpeed > baseBallSpeed * 1.5 {
+            let ratio = baseBallSpeed / currentSpeed
+            body.velocity = CGVector(dx: velocity.dx * ratio, dy: velocity.dy * ratio)
+        }
     }
 }

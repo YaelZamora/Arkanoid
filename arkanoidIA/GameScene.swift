@@ -25,6 +25,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     var bricksBroken = 0
     var baseBallSpeed: CGFloat = 400.0
     
+    var lastBorderTouchY: CGFloat?
+    var consecutiveBorderTouches = 0
+    
     private var label : SKLabelNode?
     private var spinnyNode : SKShapeNode?
     
@@ -96,7 +99,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         ball.physicsBody?.angularDamping = 0
         ball.physicsBody?.allowsRotation = false
         ball.physicsBody?.categoryBitMask = ballCategory
-        ball.physicsBody?.contactTestBitMask = bottomCategory | brickCategory
+        ball.physicsBody?.contactTestBitMask = bottomCategory | brickCategory | borderCategory | paddleCategory
         ball.physicsBody?.collisionBitMask = borderCategory | paddleCategory | brickCategory
         self.addChild(ball)
         
@@ -140,12 +143,36 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             return
         }
         
+        if bodyA.categoryBitMask == borderCategory || bodyB.categoryBitMask == borderCategory {
+            let touchY = contact.contactPoint.y
+            if let lastY = lastBorderTouchY, abs(lastY - touchY) < 10.0 {
+                consecutiveBorderTouches += 1
+                if consecutiveBorderTouches >= 2 {
+                    if let ballBody = ball.physicsBody {
+                        let currentSpeed = sqrt(ballBody.velocity.dx * ballBody.velocity.dx + ballBody.velocity.dy * ballBody.velocity.dy)
+                        let speedToUse = max(currentSpeed, baseBallSpeed)
+                        let component = speedToUse / 1.4142 // Constante para ~45 grados
+                        let directionX: CGFloat = ballBody.velocity.dx >= 0 ? 1.0 : -1.0
+                        
+                        ballBody.velocity = CGVector(dx: directionX * component, dy: -component)
+                    }
+                    consecutiveBorderTouches = 0
+                }
+            } else {
+                consecutiveBorderTouches = 1
+                lastBorderTouchY = touchY
+            }
+        } else if bodyA.categoryBitMask == paddleCategory || bodyB.categoryBitMask == paddleCategory {
+            consecutiveBorderTouches = 0
+        }
+        
         var brickBody: SKPhysicsBody?
         if bodyA.categoryBitMask == brickCategory { brickBody = bodyA }
         else if bodyB.categoryBitMask == brickCategory { brickBody = bodyB }
         
         if let brick = brickBody?.node as? SKSpriteNode {
             breakBrick(brick)
+            consecutiveBorderTouches = 0
         }
     }
     
@@ -256,15 +283,24 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         let velocity = body.velocity
         let minVelocity_Y: CGFloat = 80.0
+        let minVelocity_X: CGFloat = 80.0
         
-        if abs(velocity.dy) < minVelocity_Y {
-            body.velocity.dy = velocity.dy < 0 ? -minVelocity_Y : minVelocity_Y
+        var dx = velocity.dx
+        var dy = velocity.dy
+        
+        if abs(dy) < minVelocity_Y {
+            dy = dy >= 0 ? minVelocity_Y : -minVelocity_Y
+        }
+        if abs(dx) < minVelocity_X {
+            dx = dx >= 0 ? minVelocity_X : -minVelocity_X
         }
         
-        let currentSpeed = sqrt(velocity.dx*velocity.dx + velocity.dy*velocity.dy)
+        body.velocity = CGVector(dx: dx, dy: dy)
+        
+        let currentSpeed = sqrt(dx*dx + dy*dy)
         if currentSpeed > baseBallSpeed * 1.5 {
             let ratio = baseBallSpeed / currentSpeed
-            body.velocity = CGVector(dx: velocity.dx * ratio, dy: velocity.dy * ratio)
+            body.velocity = CGVector(dx: dx * ratio, dy: dy * ratio)
         }
     }
 }

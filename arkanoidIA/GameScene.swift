@@ -31,6 +31,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var label : SKLabelNode?
     private var spinnyNode : SKShapeNode?
     
+    /// Función ejecutada inmediatamente después de que la escena es insertada y renderizada en la vista.
+    /// Preconfigura los parámetros iniciales llamando a `setupGame` y configura nodos de estética visual.
+    ///
+    /// - Parameter view: La vista que incrusta a la escena del SKScene.
+    /// - Returns: Nodo cargado y mostrándose en el simulador o dispositivo. No retorna valor explícito.
     override func didMove(to view: SKView) {
         setupGame()
         
@@ -55,6 +60,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
+    /// Establece o restaura las variables, físicas y objetos básicos en la escena.
+    /// Inicializa la caja de gravedad nula, bordes, barra del jugador y bola con la velocidad base predicha.
+    ///
+    /// - Throws: No existen excepciones.
+    /// - Returns: Void
+    /// - Example: `setupGame()` llamado al perder para reiniciar.
     func setupGame() {
         self.removeAllChildren()
         
@@ -108,6 +119,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         setupBricks()
     }
     
+    /// Modela e inserta la matriz estática de ladrillos (Bricks) a destruir basándose en las dimensiones de la pantalla.
+    /// Distribuye 5 filas y 7 columnas iterando sobre colores asignados cíclicos.
+    ///
+    /// - Returns: Void
     func setupBricks() {
         let rows = 5
         let cols = 7
@@ -132,6 +147,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
+    /// Método delegado del motor de físicas invocado al suceder una intersección entre dos "cuerpos transparentes" configurados.
+    /// Filtra los eventos de coalición analizando los flag bits de Categoría:
+    /// - Si contacta el jugador / bordes repetidos -> Ajuste vectorial antistuck.
+    /// - Si contacta bloque destructible -> Dirige llamada a `breakBrick`.
+    /// - Si contacta el suelo invisible -> Dispara `gameOver()`
+    ///
+    /// - Parameter contact: La trama de datos generados en la intersección colisional en el frame (`SKPhysicsContact`).
+    /// - Returns: Void
     func didBegin(_ contact: SKPhysicsContact) {
         if isGameOver { return }
         
@@ -186,6 +209,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
+    /// Remueve un ladrillo objetivo del escenario visual y emite partículas estéticas (`SKEmitterNode`).
+    /// Adiciona métricas al marcador de bloques y en base a estas empuja dinámicamente aumentos del 10% de velocidad a la bola.
+    ///
+    /// - Parameter brick: Objeto nodo destino que originó el "hit" en la colisión interactiva (`SKSpriteNode`).
+    /// - Returns: Void
     func breakBrick(_ brick: SKSpriteNode) {
         let emitter = SKEmitterNode()
         emitter.particleColor = brick.color
@@ -220,6 +248,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
+    /// Desactiva actualizaciones lógicas de juego pausando interacciones con la pala.
+    /// Borra a la bola en el marco y muestra un recuadro o etiqueta simple permitiendo al usuario volver a intentar.
+    ///
+    /// - Returns: Void
     func gameOver() {
         isGameOver = true
         ball.removeFromParent()
@@ -236,6 +268,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         self.addChild(restartButton)
     }
     
+    /// Evento táctil nativo: Crea y deposita un nodo decorativo al posar un dedo en pantalla.
+    /// - Parameter pos: Coordenadas XY relativas donde bajó el puntero.
     func touchDown(atPoint pos : CGPoint) {
         if let n = self.spinnyNode?.copy() as! SKShapeNode? {
             n.position = pos
@@ -244,6 +278,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
+    /// Evento táctil nativo: Crea y rastro decorativo al arrastrar sin soltar.
+    /// - Parameter pos: Coordenadas XY actuales del puntero tras el arrastre.
     func touchMoved(toPoint pos : CGPoint) {
         if let n = self.spinnyNode?.copy() as! SKShapeNode? {
             n.position = pos
@@ -252,6 +288,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
+    /// Evento táctil nativo: Marca el rastro finalizado y decoración al levantar el dedo en pantalla.
+    /// - Parameter pos: Última coordenada XY detectada antes de retirar fuerza tactil.
     func touchUp(atPoint pos : CGPoint) {
         if let n = self.spinnyNode?.copy() as! SKShapeNode? {
             n.position = pos
@@ -260,6 +298,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
+    /// Función del ciclo de interacción nativo (UIKit/SpriteKit). Captura de los toques iniciales (`Began`).
+    /// Evalúa en este contexto inicial si existió un toque emitido exclusivamente sobre la etiqueta interactiva "restart" bajo el submenú de `gameOver`.
+    ///
+    /// - Parameter touches: Set conteniendo la metadata de todos los toques recibidos individualmente referenciados (`Set<UITouch>`).
+    /// - Parameter event: Evento gestual correlacionado registrado globalmente por UIKit (`UIEvent?`).
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
         if isGameOver {
@@ -278,6 +321,12 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
+    /// Función nativa disparada durante el desplazamiento fluido rastreado en un gesto sin soltar la pantalla.
+    /// Mueve horizontalmente el nodo jugador (`paddle`) clonando el delta "X" para emparejarlo con el dedo del usuario.
+    ///
+    /// - Parameters:
+    ///   - touches: El conjunto de toques generados provenientes del controlador (`Set<UITouch>`).
+    ///   - event: Representación abstracta opcional de la trama original tocada (`UIEvent?`).
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         if isGameOver { return }
         if let touch = touches.first {
@@ -288,6 +337,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {}
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {}
     
+    /// Evento evaluador asíncrono disparado cada frame renderizado al ser la clase un SKScene.
+    /// Es ejecutado posterior a todo ajuste de físicas dictadas dentro del "PhysicsWorld". Verifica que las variables del vector de desplazamiento `dy` y `dx` no caigan en bucles infinitos por carencia de fuerza mediante la normalización vectoral.
+    ///
+    /// - Parameter currentTime: Ticks en tiempo delta que representa la temporalidad de la simulación continua (`TimeInterval`).
+    /// - Returns: Void
     override func update(_ currentTime: TimeInterval) {
         guard !isGameOver, let body = ball?.physicsBody else { return }
         

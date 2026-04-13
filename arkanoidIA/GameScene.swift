@@ -164,6 +164,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
         } else if bodyA.categoryBitMask == paddleCategory || bodyB.categoryBitMask == paddleCategory {
             consecutiveBorderTouches = 0
+            
+            if let ballBody = ball.physicsBody {
+                let offset = ball.position.x - paddle.position.x
+                let directionX: CGFloat = offset >= 0 ? 1.0 : -1.0
+                
+                let currentDx = abs(ballBody.velocity.dx)
+                let currentDy = abs(ballBody.velocity.dy)
+                
+                ballBody.velocity = CGVector(dx: directionX * currentDx, dy: currentDy)
+            }
         }
         
         var brickBody: SKPhysicsBody?
